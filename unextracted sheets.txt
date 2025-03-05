@@ -1,0 +1,90 @@
+import os
+import pandas as pd
+import glob
+
+def extract_specific_sheets(folder_path, target_sheet_names):
+    """
+    Extract specific sheets from Excel files
+    
+    Args:
+        folder_path: Path to folder containing Excel files
+        target_sheet_names: List of sheet names to extract
+        
+    Returns:
+        Dictionary of dataframes and list of files without target sheets
+    """
+    # Get all Excel files in the folder
+    excel_files = glob.glob(os.path.join(folder_path, "*.xlsx")) + glob.glob(os.path.join(folder_path, "*.xls"))
+    
+    # Dictionary to store dataframes with file name and sheet as key
+    all_dataframes = {}
+    
+    # List to track files where no target sheets were found
+    files_without_target_sheets = []
+    
+    for file_path in excel_files:
+        file_name = os.path.basename(file_path)
+        print(f"Processing file: {file_name}")
+        
+        try:
+            # Load the Excel file
+            xl = pd.ExcelFile(file_path)
+            
+            # Check if any of the target sheets exist
+            found_sheets = []
+            for sheet_name in target_sheet_names:
+                if sheet_name in xl.sheet_names:
+                    found_sheets.append(sheet_name)
+            
+            if found_sheets:
+                for sheet_name in found_sheets:
+                    print(f"  Found sheet '{sheet_name}' in {file_name}")
+                    
+                    # Read the Excel sheet into a dataframe
+                    df = pd.read_excel(file_path, sheet_name=sheet_name)
+                    
+                    # Store the dataframe with file name and sheet as key
+                    key = f"{file_name}_{sheet_name}"
+                    all_dataframes[key] = df
+                    print(f"  Extracted '{sheet_name}' from {file_name}")
+            else:
+                print(f"  No target sheets found in {file_name}")
+                files_without_target_sheets.append(file_name)
+            
+        except Exception as e:
+            print(f"  Error processing {file_name}: {str(e)}")
+            files_without_target_sheets.append(file_name)
+    
+    print(f"\nExtracted {len(all_dataframes)} dataframes from {len(excel_files) - len(files_without_target_sheets)} files")
+    
+    if files_without_target_sheets:
+        print(f"\nFiles without any target sheets: {len(files_without_target_sheets)}")
+        for file in files_without_target_sheets:
+            print(f"  - {file}")
+    
+    return all_dataframes, files_without_target_sheets
+
+if __name__ == "__main__":
+    # Set the folder path containing the Excel files
+    folder_path = input("Enter the folder path containing Excel files: ")
+    
+    # Define the target sheet names
+    target_sheet_names = [
+        '6.1.2021-25',
+        '6.1.2021-6.1.2025',
+        'DP1-DP3 2023',
+        'KP4 2023',
+        'KP3 2023',
+        'KP2 2023',
+        'KP1 2023',
+        'DP4 2023',
+        '2021-2025'
+    ]
+    
+    # Extract the sheets
+    dataframes, files_without_target_sheets = extract_specific_sheets(folder_path, target_sheet_names)
+    
+    print("\nSummary:")
+    print(f"Total Excel files processed: {len(glob.glob(os.path.join(folder_path, '*.xlsx'))) + len(glob.glob(os.path.join(folder_path, '*.xls')))}")
+    print(f"Dataframes extracted: {len(dataframes)}")
+    print(f"Files where no target sheets were found: {len(files_without_target_sheets)}")
