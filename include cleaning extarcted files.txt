@@ -1,0 +1,139 @@
+import os
+import pandas as pd
+import glob
+import numpy as np
+
+def extract_specific_sheets(folder_path, target_sheet_names):
+    """
+    Extract specific sheets from Excel files with special handling for KP sheets
+    """
+    excel_files = glob.glob(os.path.join(folder_path, "*.xlsx")) + glob.glob(os.path.join(folder_path, "*.xls"))
+    all_dataframes = {}
+    files_without_target_sheets = []
+    
+    for file_path in excel_files:
+        file_name = os.path.basename(file_path)
+        print(f"Processing file: {file_name}")
+        
+        try:
+            xl = pd.ExcelFile(file_path)
+            
+            found_sheets = []
+            for sheet_name in target_sheet_names:
+                if sheet_name in xl.sheet_names:
+                    found_sheets.append(sheet_name)
+            
+            if found_sheets:
+                for sheet_name in found_sheets:
+                    print(f"  Found sheet '{sheet_name}' in {file_name}")
+                    
+                    # Check if it's a KP or DP sheet
+                    is_kp_dp_sheet = any(prefix in sheet_name for prefix in ["KP", "DP"])
+                    
+                    if is_kp_dp_sheet:
+                        # Special handling for KP/DP sheets
+                        # Find the header row first
+                        df_raw = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
+                        header_row = find_header_row(df_raw)
+                        
+                        if header_row is not None:
+                            # Read with correct header
+                            df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
+                            
+                            # Clean up the dataframe
+                            df = clean_kp_dp_dataframe(df)
+                        else:
+                            df = pd.read_excel(file_path, sheet_name=sheet_name)
+                    else:
+                        # Standard handling for other sheets
+                        df = pd.read_excel(file_path, sheet_name=sheet_name)
+                    
+                    key = f"{file_name}_{sheet_name}"
+                    all_dataframes[key] = df
+                    print(f"  Extracted '{sheet_name}' from {file_name}")
+            else:
+                print(f"  No target sheets found in {file_name}")
+                files_without_target_sheets.append(file_name)
+            
+        except Exception as e:
+            print(f"  Error processing {file_name}: {str(e)}")
+            files_without_target_sheets.append(file_name)
+    
+    return all_dataframes, files_without_target_sheets
+
+def find_header_row(df):
+    """Find the row containing headers like STEP, HOURLY, BI-WEEKLY, ANNUAL"""
+    for i in range(len(df)):
+        row = df.iloc[i].astype(str).str.upper()
+        if "STEP" in row.values and "HOURLY" in row.values and "ANNUAL" in row.values:
+            return i
+    return None
+
+def clean_kp_dp_dataframe(df):
+    """Clean the KP/DP dataframe to handle multiple columns with same name"""
+    # Create a copy to avoid modifying the original
+    df_clean = df.copy()
+    
+    # Create standard column names
+    standard_columns = ['OLD GRADE', 'CURRENT GRADE', 'STEP', 'HOURLY', 'BI-WEEKLY', 'ANNUAL']
+    
+    # Find which columns to keep
+    columns_to_keep = []
+    for col in standard_columns:
+        if col in df_clean.columns:
+            columns_to_keep.append(col)
+    
+    # If there are multiple columns with the same name, keep only the first occurrence
+    if 'HOURLY' in df_clean.columns:
+        first_hourly_idx = df_clean.columns.get_loc('HOURLY')
+        columns_to_keep = [col for col in columns_to_keep if col != 'HOURLY']
+        columns_to_keep.insert(3, df_clean.columns[first_hourly_idx])  # Insert at the proper position
+    
+    if 'BI-WEEKLY' in df_clean.columns:
+        first_biweekly_idx = df_clean.columns.get_loc('BI-WEEKLY')
+        columns_to_keep = [col for col in columns_to_keep if col != 'BI-WEEKLY']
+        columns_to_keep.insert(4, df_clean.columns[first_biweekly_idx])  # Insert at the proper position
+    
+    if 'ANNUAL' in df_clean.columns:
+        first_annual_idx = df_clean.columns.get_loc('ANNUAL')
+        columns_to_keep = [col for col in columns_to_keep if col != 'ANNUAL']
+        columns_to_keep.insert(5, df_clean.columns[first_annual_idx])  # Insert at the proper position
+    
+    # Filter to keep only needed columns
+    df_clean = df_clean[columns_to_keep]
+    
+    # Rename to standard column names
+    column_mapping = {col: std_col for col, std_col in zip(columns_to_keep, standard_columns[:len(columns_to_keep)])}
+    df_clean = df_clean.rename(columns=column_mapping)
+    
+    # Convert numeric columns
+    for col in ['HOURLY', 'BI-WEEKLY', 'ANNUAL']:
+        if col in df_clean.columns:
+            df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
+    
+    # Drop rows with NaN in key columns
+    df_clean = df_clean.dropna(subset=['CURRENT GRADE', 'STEP'], how='all')
+    
+    return df_clean
+
+if __name__ == "__main__":
+    folder_path = input("Enter the folder path containing Excel files: ")
+    
+    target_sheet_names = [
+        '6.1.2021-25',
+        '6.1.2021-6.1.2025',
+        'DP1-DP3 2023',
+        'KP4 2023',
+        'KP3 2023',
+        'KP2 2023',
+        'KP1 2023',
+        'DP4 2023',
+        '2021-2025'
+    ]
+    
+    dataframes, files_without_target_sheets = extract_specific_sheets(folder_path, target_sheet_names)
+    
+    print("\nSummary:")
+    print(f"Total Excel files processed: {len(glob.glob(os.path.join(folder_path, '*.xlsx'))) + len(glob.glob(os.path.join(folder_path, '*.xls')))}")
+    print(f"Dataframes extracted: {len(dataframes)}")
+    print(f"Files where no target sheets were found: {len(files_without_target_sheets)}")
