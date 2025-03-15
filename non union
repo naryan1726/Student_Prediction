@@ -3,196 +3,183 @@ import pandas as pd
 import re
 
 
-class FileReader:
-    @staticmethod
-    def read_file(file_path):
-        file_ext = os.path.splitext(file_path)[1].lower()
-        try:
-            if file_ext == '.csv':
-                return pd.read_csv(file_path), [None]
-            elif file_ext in ['.xlsx', '.xls']:
-                try:
-                    excel_file = pd.ExcelFile(file_path)
-                    return excel_file, excel_file.sheet_names
-                except Exception:
-                    # Try alternative engine if the default fails
-                    engine = 'xlrd' if file_ext == '.xlsx' else 'openpyxl'
-                    excel_file = pd.ExcelFile(file_path, engine=engine)
-                    return excel_file, excel_file.sheet_names
-        except Exception as e:
-            print(f"Error reading {file_path}: {e}")
-        return None, []
-
-
-class DataProcessor:
-    @staticmethod
-    def find_columns(df):
-        """Find the grade, job_code, and annual columns."""
-        grade_col = None
-        job_code_col = None
-        annual_col = None
-        
-        # Check for exact column name matches first
-        for col in df.columns:
-            col_str = str(col).upper()
-            if col_str == 'GRADE' and not grade_col:
-                grade_col = col
-            elif 'ANNUAL' in col_str and not annual_col:
-                annual_col = col
-            elif ('JOB' in col_str and 'CODE' in col_str) and not job_code_col:
-                job_code_col = col
-            elif col_str == 'UNIONCODE' and not job_code_col:
-                job_code_col = col
-        
-        # If grade column not found, check if it's the second column
-        if not grade_col and len(df.columns) >= 2:
-            # Make sure it's not the step column
-            second_col = str(df.columns[1]).upper()
-            if 'STEP' not in second_col:
-                grade_col = df.columns[1]
-        
-        # If annual column not found, look for column with large numeric values
-        if not annual_col:
-            for col in df.columns:
-                if 'BI-WEEKLY' in str(col).upper() or 'HOURLY' in str(col).upper():
-                    continue  # Skip these columns
-                try:
-                    # Sample some values, clean and convert to numeric
-                    sample = df[col].head(5).astype(str).str.replace('[$,]', '', regex=True)
-                    numeric_sample = pd.to_numeric(sample, errors='coerce')
-                    # If values are large (>10000), likely annual salary
-                    if numeric_sample.mean() > 10000:
-                        annual_col = col
-                        break
-                except:
-                    continue
-        
-        # If still no annual column, check if 5th column might be annual
-        if not annual_col and len(df.columns) >= 5:
-            annual_col = df.columns[4]  # Often the 5th column in salary tables
-            
-        return grade_col, job_code_col, annual_col
-    
-    @staticmethod
-    def find_data_start(df):
-        """Find the row where actual data begins."""
-        for i, row in df.head(10).iterrows():
-            # If this row contains headers like 'GRADE' or 'ANNUAL', data starts on next row
-            if any(re.search(r'GRADE|ANNUAL|SALARY', str(val).upper()) for val in row):
-                return i + 1
-        return 0
-    
-    @staticmethod
-    def process_dataframe(df, file_name):
-        # Skip empty dataframes
-        if df.empty:
-            return None
-        
-        # Find where actual data starts
-        start_row = DataProcessor.find_data_start(df)
-        df = df.iloc[start_row:].reset_index(drop=True)
-        
-        # Find grade, job_code, and annual columns
-        grade_col, job_code_col, annual_col = DataProcessor.find_columns(df)
-        
-        # Can't proceed without grade and annual columns
-        if not grade_col or not annual_col:
-            print(f"Could not find required columns in {file_name}")
-            return None
-        
-        # Clean and convert annual column
-        df[annual_col] = pd.to_numeric(
-            df[annual_col].astype(str)
-            .str.replace('[$,]', '', regex=True)
-            .str.strip(),
-            errors='coerce'
-        )
-        
-        # Group by grade
-        results = []
-        for grade, group in df.groupby(df[grade_col].astype(str).str.strip()):
-            if len(grade.strip()) == 0:
-                continue  # Skip empty grade values
-                
-            # Get job code if available
-            job_code = None
-            if job_code_col:
-                job_codes = group[job_code_col].astype(str).unique()
-                job_code = ';'.join([code for code in job_codes if len(code.strip()) > 0 and code.lower() != 'nan'])
-                if job_code == '':
-                    job_code = None
-            
-            # Calculate min/max salary
-            min_salary = group[annual_col].min()
-            max_salary = group[annual_col].max()
-            
-            # Only add if we have valid values
-            if not pd.isna(min_salary) and not pd.isna(max_salary):
-                results.append({
-                    'grade': grade,
-                    'job_code': job_code,
-                    'term': 'annual',
-                    'start_rate': min_salary,
-                    'end_rate': max_salary,
-                    'category': os.path.splitext(os.path.basename(file_name))[0]
-                })
-        
-        if not results:
-            return None
-            
-        return pd.DataFrame(results)
-
-
-class SalaryProcessor:
-    def __init__(self, folder_path):
-        self.folder_path = folder_path
-    
-    def process_files(self, file_list):
-        """Process all files in the list."""
-        all_data = []
-        
-        for file_name in file_list:
+def read_file(file_path):
+    """Read Excel or CSV file."""
+    file_ext = os.path.splitext(file_path)[1].lower()
+    try:
+        if file_ext == '.csv':
+            return pd.read_csv(file_path), [None]
+        elif file_ext in ['.xlsx', '.xls']:
             try:
-                file_path = os.path.join(self.folder_path, file_name)
-                print(f"Processing {file_name}...")
-                
-                excel_file, sheet_names = FileReader.read_file(file_path)
-                
-                if excel_file is None:
-                    continue
-                    
-                if sheet_names == [None]:  # CSV file
-                    df = excel_file
-                    processed_df = DataProcessor.process_dataframe(df, file_name)
-                    if processed_df is not None:
-                        all_data.append(processed_df)
-                else:  # Excel file with multiple sheets
-                    for sheet_name in sheet_names:
-                        try:
-                            df = pd.read_excel(excel_file, sheet_name=sheet_name)
-                            processed_df = DataProcessor.process_dataframe(df, f"{file_name}_{sheet_name}")
-                            if processed_df is not None:
-                                all_data.append(processed_df)
-                        except Exception as e:
-                            print(f"Error processing sheet {sheet_name}: {e}")
-            except Exception as e:
-                print(f"Error processing file {file_name}: {e}")
-        
-        # If no data processed, return empty DataFrame
-        if not all_data:
-            return pd.DataFrame(columns=['grade', 'job_code', 'term', 'start_rate', 'end_rate', 'category'])
-        
-        # Combine all the processed data
-        combined_df = pd.concat(all_data, ignore_index=True)
-        
-        # Sort by category and grade
-        final_df = combined_df.sort_values(['category', 'grade'])
-        
-        return final_df
+                excel_file = pd.ExcelFile(file_path)
+                return excel_file, excel_file.sheet_names
+            except:
+                engine = 'xlrd' if file_ext == '.xlsx' else 'openpyxl'
+                excel_file = pd.ExcelFile(file_path, engine=engine)
+                return excel_file, excel_file.sheet_names
+    except Exception as e:
+        print(f"Error reading {file_path}: {e}")
+    return None, []
 
 
-
-processor = SalaryProcessor(folder_path)
-result_df = processor.process_files(files_to_process)
+def find_columns(df):
+    """Find grade, job_code, and annual columns."""
+    # Initialize columns
+    grade_col = job_code_col = annual_col = None
     
+    # Try to find columns by name
+    for col in df.columns:
+        col_str = str(col).upper()
+        if col_str == 'GRADE' and not grade_col:
+            grade_col = col
+        elif 'ANNUAL' in col_str and not annual_col:
+            annual_col = col
+        elif ('JOB' in col_str and 'CODE' in col_str) and not job_code_col:
+            job_code_col = col
     
+    # Special case for sample data with IT grades
+    if not grade_col and len(df.columns) > 1:
+        # Check if second column contains IT grades
+        second_col = df.columns[1]
+        sample = df[second_col].astype(str).head(5)
+        if sample.str.match(r'^[A-Za-z]{1,2}\d{1,2}$').any():  # Match patterns like IT1, IT2
+            grade_col = second_col
+    
+    # Special case for files with 4-digit grade numbers
+    if not grade_col and df.shape[1] > 0:
+        # Check first column for 4-digit grade numbers
+        first_col = df.columns[0]
+        sample = df[first_col].astype(str).head(5)
+        if sample.str.match(r'^\d{4}$').any():  # Match patterns like 1118, 1119
+            grade_col = first_col
+            # Second column might be job code
+            if df.shape[1] > 1 and not job_code_col:
+                job_code_col = df.columns[1]
+    
+    # Look for job codes if not found
+    if not job_code_col:
+        for col in df.columns:
+            if col == grade_col or col == annual_col:
+                continue
+            sample = df[col].astype(str).head(10)
+            # Job codes often match D01, D02, 470L patterns
+            if sample.str.match(r'^[A-Za-z]?\d{2,3}[A-Za-z]?$').any():
+                job_code_col = col
+                break
+    
+    # Find annual column by looking for large numeric values
+    if not annual_col:
+        for col in df.columns:
+            if col == grade_col or col == job_code_col:
+                continue
+            try:
+                sample = df[col].astype(str).str.replace('[$,]', '', regex=True).head(5)
+                numeric = pd.to_numeric(sample, errors='coerce')
+                if numeric.mean() > 10000:  # Likely annual salary
+                    annual_col = col
+                    break
+            except:
+                continue
+    
+    # Last resort - use positional inference for annual column
+    if not annual_col and len(df.columns) >= 5:
+        col_candidates = [c for c in df.columns if c != grade_col and c != job_code_col]
+        if col_candidates:
+            annual_col = col_candidates[-1]  # Use last unidentified column
+    
+    return grade_col, job_code_col, annual_col
+
+
+def process_dataframe(df, file_name):
+    """Process a dataframe to extract salary information."""
+    if df.empty:
+        return None
+    
+    # Skip header rows
+    for i, row in df.head(5).iterrows():
+        if any('GRADE' in str(val).upper() or 'ANNUAL' in str(val).upper() for val in row):
+            df = df.iloc[i+1:].reset_index(drop=True)
+            break
+    
+    # Find columns
+    grade_col, job_code_col, annual_col = find_columns(df)
+    
+    # Can't proceed without required columns
+    if not grade_col or not annual_col:
+        return None
+    
+    # Clean and convert annual column
+    df[annual_col] = pd.to_numeric(
+        df[annual_col].astype(str).str.replace('[$,]', '', regex=True),
+        errors='coerce'
+    )
+    
+    # Group by grade and extract information
+    results = []
+    for grade, group in df.groupby(df[grade_col].astype(str).str.strip()):
+        if not grade.strip() or grade.lower() == 'nan':
+            continue
+        
+        # Get job code if available
+        job_code = None
+        if job_code_col:
+            codes = [c.strip() for c in group[job_code_col].astype(str).unique() 
+                     if c.strip() and c.lower() not in ('nan', 'none')]
+            job_code = ';'.join(codes) if codes else None
+        
+        # Get min/max salary
+        min_salary = group[annual_col].min()
+        max_salary = group[annual_col].max()
+        
+        if not pd.isna(min_salary) and not pd.isna(max_salary):
+            results.append({
+                'grade': grade,
+                'job_code': job_code,
+                'term': 'annual',
+                'start_rate': min_salary,
+                'end_rate': max_salary,
+                'category': os.path.splitext(os.path.basename(file_name))[0]
+            })
+    
+    return pd.DataFrame(results) if results else None
+
+
+def process_files(folder_path, file_list):
+    """Process all files in the list."""
+    all_data = []
+    
+    for file_name in file_list:
+        try:
+            file_path = os.path.join(folder_path, file_name)
+            excel_file, sheet_names = read_file(file_path)
+            
+            if excel_file is None:
+                continue
+                
+            if sheet_names == [None]:  # CSV file
+                df = excel_file
+                processed_df = process_dataframe(df, file_name)
+                if processed_df is not None:
+                    all_data.append(processed_df)
+            else:  # Excel file
+                for sheet_name in sheet_names:
+                    try:
+                        df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                        processed_df = process_dataframe(df, f"{file_name}_{sheet_name}")
+                        if processed_df is not None:
+                            all_data.append(processed_df)
+                    except Exception as e:
+                        print(f"Error processing sheet {sheet_name}: {e}")
+        except Exception as e:
+            print(f"Error processing file {file_name}: {e}")
+    
+    # Return combined data or empty DataFrame
+    if not all_data:
+        return pd.DataFrame(columns=['grade', 'job_code', 'term', 'start_rate', 'end_rate', 'category'])
+    
+    return pd.concat(all_data, ignore_index=True).sort_values(['category', 'grade'])
+
+
+    
+# Process files and get results
+result_df = process_files(folder_path, files_to_process)
