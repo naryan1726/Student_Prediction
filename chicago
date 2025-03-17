@@ -29,22 +29,9 @@ def read_excel_data(file_path):
         print(f"An error occurred: {str(e)}")
         return None
 
-# Example usage
-if __name__ == "__main__":
-    # Replace 'your_excel_file.xlsx' with your actual file path
-    file_path = 'your_excel_file.xlsx'
+
+# Replace 'your_excel_file.xlsx' with your actual file path
+file_path = 'your_excel_file.xlsx'
     
-    # Read the data starting from the 4th row
-    data = read_excel_data(file_path)
-    
-    # If data was successfully read, display it
-    if data is not None:
-        print("Successfully read data from 'Data' sheet starting from row 4:")
-        print(data.head())  # Display first few rows
-        
-        # Example: Accessing specific columns
-        # print(data['Column_Name'])
-        
-        # Example: Performing calculations
-        # mean_value = data['Numeric_Column'].mean()
-        # print(f"Mean value: {mean_value}")
+# Read the data starting from the 4th row
+data = read_excel_data(file_path)
