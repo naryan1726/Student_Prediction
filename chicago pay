@@ -1,0 +1,42 @@
+import pandas as pd
+
+def read_municipal_payschedule(file_path, num_columns=4):
+    """
+    Read an Excel file and return a DataFrame with only the specified number of columns.
+    
+    Parameters:
+    -----------
+    file_path : str
+        Path to the Excel file
+    num_columns : int, default=4
+        Number of columns to read from the Excel file
+    
+    Returns:
+    --------
+    pandas.DataFrame
+        DataFrame containing only the specified number of columns
+    """
+    try:
+        # Read the Excel file
+        df = pd.read_excel(file_path)
+        
+        # Ensure we only take existing columns if the file has fewer than requested
+        actual_columns = min(num_columns, len(df.columns))
+        
+        # Select only the first num_columns columns
+        selected_df = df.iloc[:, :actual_columns]
+        
+        print(f"Successfully read {file_path} with {selected_df.shape[0]} rows and {selected_df.shape[1]} columns")
+        return selected_df
+    
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found")
+        return None
+    except Exception as e:
+        print(f"Error reading Excel file: {str(e)}")
+        return None
+ 
+  
+  pay_df = read_municipal_payschedule("Municipal payschedules.xlsx")
+    
+    
