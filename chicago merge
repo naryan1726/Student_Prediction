@@ -1,0 +1,16 @@
+import pandas as pd
+
+def left_join_dataframes(df1, df2):
+    """
+    Perform a left join on two DataFrames based on specified columns.
+
+    Parameters:
+    df1 (pd.DataFrame): The main DataFrame.
+    df2 (pd.DataFrame): The DataFrame to join.
+    on_columns (list): List of columns to join on.
+
+    Returns:
+    pd.DataFrame: The merged DataFrame.
+    """
+    merged_df = pd.merge(df1, df2, on=, how='left')
+    return merged_df
