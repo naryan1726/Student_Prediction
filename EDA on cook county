@@ -1,0 +1,4 @@
+report_path = "/dbfs/tmp/cook_county_sweetviz.html"
+cook_county_report.show_html(report_path)
+
+displayHTML(f'<a href="files/tmp/cook_county_sweetviz.html" target="_blank">Click to open Sweetviz Report</a>')
