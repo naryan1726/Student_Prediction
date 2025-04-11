@@ -1,0 +1,60 @@
+import os
+import pandas as pd
+from pathlib import Path
+
+def combine_excel_files(folder_path):
+    """
+    Reads all Excel (.xlsx) files in the specified folder and combines them into a single DataFrame.
+    
+    Parameters:
+    folder_path (str): Path to the folder containing Excel files
+    
+    Returns:
+    DataFrame: Combined data from all Excel files
+    """
+    # Create an empty list to store individual DataFrames
+    all_dataframes = []
+    
+    # Convert to Path object for better path handling
+    folder = Path(folder_path)
+    
+    # Get list of all xlsx files in the folder
+    excel_files = list(folder.glob('*.xlsx'))
+    
+    if not excel_files:
+        print(f"No Excel files found in {folder_path}")
+        return pd.DataFrame()
+    
+    # Loop through each Excel file
+    for file in excel_files:
+        print(f"Reading {file.name}...")
+        
+        # Read the Excel file
+        df = pd.read_excel(file)
+        
+        # Add a column to identify the source file (optional)
+        df['source_file'] = file.name
+        
+        # Append to the list
+        all_dataframes.append(df)
+    
+    # Combine all DataFrames into one
+    combined_df = pd.concat(all_dataframes, ignore_index=True)
+    
+    print(f"Successfully combined {len(excel_files)} Excel files.")
+    return combined_df
+
+# Example usage
+if __name__ == "__main__":
+    # Replace with your folder path
+    folder_path = "path/to/your/excel/files"
+    
+    # Combine all Excel files
+    combined_data = combine_excel_files(folder_path)
+    
+    # Display the first few rows of the combined DataFrame
+    print("\nCombined DataFrame:")
+    print(combined_data.head())
+    
+    # Optional: Save the combined DataFrame to a new Excel file
+    # combined_data.to_excel("combined_data.xlsx", index=False)
