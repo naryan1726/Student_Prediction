@@ -1,0 +1,27 @@
+import pandas as pd
+import re
+
+def clean_salary_column(df):
+    # Make a copy to avoid modifying the original
+    df = df.copy()
+    
+    # Define function to extract and format the range
+    def format_range(value):
+        # Find all numbers with commas and decimals
+        numbers = re.findall(r'([\d,]+\.?\d*)', str(value))
+        if len(numbers) >= 2:
+            # Format as "$min - $max"
+            return f"${numbers[0]} - ${numbers[1]}"
+        elif len(numbers) == 1:
+            return f"${numbers[0]}"
+        else:
+            return value
+    
+    # Apply the formatting function
+    df['Salary Range'] = df['Salary Range'].apply(format_range)
+    
+    return df
+
+# Example usage:
+# df = pd.read_excel("your_file.xlsx")
+# df = clean_salary_column(df)
